@@ -1,4 +1,5 @@
-![](./logo.svg)
+# WARNING
+## This fork is made for use only with FNF: Doido Engine, thus being required by it. You might run into issues if you try to use this with any other project.
 
 # FlxAnimate
 
