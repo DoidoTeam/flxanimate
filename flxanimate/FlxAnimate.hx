@@ -13,7 +13,11 @@ import flxanimate.animate.*;
 import flxanimate.zip.Zip;
 import openfl.Assets;
 import haxe.io.BytesInput;
+#if (flixel >= "5.3.0")
+import flixel.sound.FlxSound;
+#else
 import flixel.system.FlxSound;
+#end
 import flixel.FlxG;
 import flxanimate.data.AnimationData;
 import flixel.FlxSprite;
@@ -23,6 +27,7 @@ import flixel.math.FlxMatrix;
 import openfl.geom.ColorTransform;
 import flixel.math.FlxMath;
 import flixel.FlxBasic;
+import flixel.graphics.frames.FlxFramesCollection;
 
 typedef Settings = {
 	?ButtonSettings:Map<String, flxanimate.animate.FlxAnim.ButtonSettings>,
@@ -37,6 +42,18 @@ typedef Settings = {
 
 class FlxAnimate extends FlxSprite
 {
+	public var isAnimateAtlas(default, set):Bool = true;
+
+	function set_isAnimateAtlas(v:Bool)
+	{
+		isAnimateAtlas = v;
+		if(isAnimateAtlas && anim == null)
+			anim = new FlxAnim(this);
+		/*else
+			anim = null;*/
+		return v;
+	}
+
 	public var anim(default, null):FlxAnim;
 
 	// #if FLX_SOUND_SYSTEM
@@ -45,7 +62,7 @@ class FlxAnimate extends FlxSprite
 	
 	// public var rectangle:FlxRect;
 	
-	public var showPivot:Bool = #if debug true #else false #end;
+	public var showPivot(default, set):Bool = false;
 
 	var _pivot:FlxFrame;
 	/**
@@ -62,7 +79,7 @@ class FlxAnimate extends FlxSprite
 	 * @param Path      The path to the texture atlas, **NOT** the path of the any of the files inside the texture atlas (`Animation.json`, `spritemap.json`, etc).
 	 * @param Settings  Optional settings for the animation (antialiasing, framerate, reversed, etc.).
 	 */
-	public function new(X:Float = 0, Y:Float = 0, ?Path:String, ?Settings:Settings)
+	/*public function new(X:Float = 0, Y:Float = 0, ?Path:String, ?Settings:Settings)
 	{
 		super(X, Y);
 		anim = new FlxAnim(this);
@@ -70,13 +87,30 @@ class FlxAnimate extends FlxSprite
 			loadAtlas(Path);
 		if (Settings != null)
 			setTheSettings(Settings);
-		@:privateAccess
-		_pivot = new FlxFrame(FlxGraphic.fromBitmapData(Assets.getBitmapData("flxanimate/images/pivot.png")));
-		@:privateAccess
-		_pivot.frame = new FlxRect(0,0,_pivot.parent.width,_pivot.parent.height);
-		_pivot.name = "pivot";
+	}*/
+	public function new(X:Float = 0, Y:Float = 0, isAnimateAtlas:Bool = true)
+	{
+		super(X, Y);
+		this.isAnimateAtlas = isAnimateAtlas;
+		/*if(isAnimateAtlas)
+			anim = new FlxAnim(this);*/
 	}
 
+	function set_showPivot(v:Bool)
+	{
+		if(v && _pivot == null) {
+			@:privateAccess
+			_pivot = new FlxFrame(FlxGraphic.fromBitmapData(Assets.getBitmapData("flxanimate/images/pivot.png")));
+			_pivot.frame = new FlxRect(0, 0, _pivot.parent.width, _pivot.parent.height);
+			_pivot.name = "pivot";
+		}
+		return showPivot = v;
+	}
+
+	/**
+	 * Loads a regular atlas.
+	 * @param Path The path where the atlas is located. Must be the folder, **NOT** any of the contents of it! 
+	 */
 	public function loadAtlas(Path:String)
 	{
 		if (!Assets.exists('$Path/Animation.json') && haxe.io.Path.extension(Path) != "zip")
@@ -84,17 +118,42 @@ class FlxAnimate extends FlxSprite
 			FlxG.log.error('Animation file not found in specified path: "$path", have you written the correct path?');
 			return;
 		}
-		anim._loadAtlas(atlasSetting(Path));
-		frames = FlxAnimateFrames.fromTextureAtlas(Path);
+		loadSeparateAtlas(atlasSetting(Path), FlxAnimateFrames.fromTextureAtlas(Path));
+	}
+
+	/**
+	 * Function in handy to load atlases that share same animation/frames but dont necessarily mean it comes together.
+	 * @param animation The animation file. This should be the content of the `JSON`, **NOT** the path of it.
+	 * @param frames The collection of frames.
+	 */
+	public function loadSeparateAtlas(?animation:String = null, ?frames:FlxFramesCollection = null)
+	{
+		if (frames != null)
+			this.frames = frames;
+		if (animation != null)
+		{
+			var json:AnimAtlas = haxe.Json.parse(animation);
+
+			anim._loadAtlas(json);
+		}
+		if (anim != null)
+			origin = anim.curInstance.symbol.transformationPoint;
 	}
 	/**
 	 * the function `draw()` renders the symbol that `anim` has currently plus a pivot that you can toggle on or off.
 	 */
 	public override function draw():Void
 	{
-		parseElement(anim.curInstance, anim.curFrame, _matrix, colorTransform, true);
-		if (showPivot)
-			drawLimb(_pivot, new FlxMatrix(1,0,0,1, origin.x, origin.y));
+		if(isAnimateAtlas && anim != null)
+		{
+			if(alpha <= 0) return;
+
+			parseElement(anim.curInstance, anim.curFrame, _matrix, colorTransform, true);
+			if(showPivot)
+				drawLimb(_pivot, new FlxMatrix(1,0,0,1, origin.x, origin.y));
+		}
+		else
+			super.draw();
 	}
 	/**
 	 * This basically renders an element of any kind, both limbs and symbols.
@@ -110,7 +169,6 @@ class FlxAnimate extends FlxSprite
 
 		colorEffect.concat(colorFilter);
 		matrix.concat(m);
-
 
 		if (instance.bitmap != null)
 		{	
@@ -156,7 +214,7 @@ class FlxAnimate extends FlxSprite
 					firstframe = firstFrame - frame.index;
 				}
 				var coloreffect = new ColorTransform();
-				coloreffect.concat(frame._colorEffect);
+				//coloreffect.concat(frame._colorEffect); // FIX THIS LATER
 				coloreffect.concat(colorEffect);
 				parseElement(element, firstframe, matrix, coloreffect);
 			}
@@ -208,41 +266,48 @@ class FlxAnimate extends FlxSprite
 		#end
 		return frame;
 	}
+
+	static var rMatrix = new FlxMatrix();
+
 	function drawLimb(limb:FlxFrame, _matrix:FlxMatrix, ?colorTransform:ColorTransform)
 	{
 		if (alpha == 0 || colorTransform != null && (colorTransform.alphaMultiplier == 0 || colorTransform.alphaOffset == -255) || limb == null || limb.type == EMPTY)
 			return;
+
 		for (camera in cameras)
 		{
-			var matrix = new FlxMatrix();
-			matrix.concat(_matrix);
+			rMatrix.identity();
+			limb.prepareMatrix(rMatrix);
+			rMatrix.concat(_matrix);
 			if (!camera.visible || !camera.exists || !limbOnScreen(limb, _matrix, camera))
 				return;
-			
+
 			getScreenPosition(_point, camera).subtractPoint(offset);
-			matrix.translate(-origin.x, -origin.y);
+			rMatrix.translate(-origin.x, -origin.y);
 			if (limb.name != "pivot")
-				matrix.scale(scale.x, scale.y);
-			else 
-				matrix.a = matrix.d = 0.7 / camera.zoom;
+				rMatrix.scale(scale.x, scale.y);
+			else
+				rMatrix.a = rMatrix.d = 0.7 / camera.zoom;
+
 			_point.addPoint(origin);
 			if (isPixelPerfectRender(camera))
-		    {
-			    _point.floor();
-		    }
-			
-			matrix.translate(_point.x, _point.y);
-			camera.drawPixels(limb, null, matrix, colorTransform, blend, antialiasing);
+			{
+				_point.floor();
+			}
+
+			rMatrix.translate(_point.x, _point.y);
+			camera.drawPixels(limb, null, rMatrix, colorTransform, blend, antialiasing);
 			#if FLX_DEBUG
 			FlxBasic.visibleCount++;
 			#end
 		}
-
-		#if FLX_DEBUG
-		if (FlxG.debugger.drawDebug)
-			drawDebug();
-		#end
+		// doesnt work, needs to be remade
+		//#if FLX_DEBUG 
+		//if (FlxG.debugger.drawDebug)
+		//	drawDebug();
+		//#end
 	}
+
 	function limbOnScreen(limb:FlxFrame, m:FlxMatrix, ?Camera:FlxCamera)
 	{
 		if (Camera == null)
@@ -274,58 +339,67 @@ class FlxAnimate extends FlxSprite
 	var oldMatrix:FlxMatrix;
 	override function set_flipX(Value:Bool)
 	{
-		if (oldMatrix == null)
+		if(isAnimateAtlas && anim != null)
 		{
-			oldMatrix = new FlxMatrix();
-			oldMatrix.concat(_matrix);
-		}
-		if (Value)
-		{
-			_matrix.a = -oldMatrix.a;
-			_matrix.c = -oldMatrix.c;
+			if (oldMatrix == null)
+			{
+				oldMatrix = new FlxMatrix();
+				oldMatrix.concat(_matrix);
+			}
+			if (Value)
+			{
+				_matrix.a = -oldMatrix.a;
+				_matrix.c = -oldMatrix.c;
+			}
+			else
+			{
+				_matrix.a = oldMatrix.a;
+				_matrix.c = oldMatrix.c;
+			}
+			return Value;
 		}
 		else
-		{
-			_matrix.a = oldMatrix.a;
-			_matrix.c = oldMatrix.c;
-		}
-		return Value;
+			return super.set_flipX(Value);
 	}
 	override function set_flipY(Value:Bool)
 	{
-		if (oldMatrix == null)
+		if(isAnimateAtlas && anim != null)
 		{
-			oldMatrix = new FlxMatrix();
-			oldMatrix.concat(_matrix);
-		}
-		if (Value)
-		{
-			_matrix.b = -oldMatrix.b;
-			_matrix.d = -oldMatrix.d;
+			if (oldMatrix == null)
+				{
+					oldMatrix = new FlxMatrix();
+					oldMatrix.concat(_matrix);
+				}
+				if (Value)
+				{
+					_matrix.b = -oldMatrix.b;
+					_matrix.d = -oldMatrix.d;
+				}
+				else
+				{
+					_matrix.b = oldMatrix.b;
+					_matrix.d = oldMatrix.d;
+				}
+				return Value;
 		}
 		else
-		{
-			_matrix.b = oldMatrix.b;
-			_matrix.d = oldMatrix.d;
-		}
-		return Value;
+			return super.set_flipY(Value);
 	}
 
-	override function destroy()      
-	{                                                                
-		if (anim != null)
+	override function destroy()
+	{
+		if(anim != null)
 			anim.destroy();
-		anim = null;
-		// #if FLX_SOUND_SYSTEM
-		// if (audio != null)
-		// 	audio.destroy();
-		// #end
+		//anim = null;
 		super.destroy();
 	}
 
 	public override function updateAnimation(elapsed:Float) 
 	{
-		anim.update(elapsed);
+		if(isAnimateAtlas && anim != null)
+			anim.update(elapsed);
+		else
+			super.updateAnimation(elapsed);
 	}
 
 	public function setButtonPack(button:String, callbacks:ClickStuff #if FLX_SOUND_SYSTEM , sound:FlxSound #end):Void
@@ -334,7 +408,7 @@ class FlxAnimate extends FlxSprite
 		anim.buttonMap.set(button, {Callbacks: callbacks, #if FLX_SOUND_SYSTEM Sound:  sound #end});
 	}
 
-	function setTheSettings(?Settings:Settings):Void
+	public function setTheSettings(?Settings:Settings):Void
 	{
 		@:privateAccess
 		if (true)
@@ -363,18 +437,18 @@ class FlxAnimate extends FlxSprite
 		}
 	}
 
-	function atlasSetting(Path:String):AnimAtlas
+	function atlasSetting(Path:String)
 	{
-		var jsontxt:AnimAtlas = null;
+		var jsontxt:String = null;
 		if (haxe.io.Path.extension(Path) == "zip")
 		{
 			var thing = Zip.readZip(Assets.getBytes(Path));
-			
+
 			for (list in Zip.unzip(thing))
 			{
 				if (list.fileName.indexOf("Animation.json") != -1)
 				{
-					jsontxt = haxe.Json.parse(list.data.toString());
+					jsontxt = list.data.toString();
 					thing.remove(list);
 					continue;
 				}
@@ -383,9 +457,7 @@ class FlxAnimate extends FlxSprite
 			FlxAnimateFrames.zip = thing;
 		}
 		else
-		{
-			jsontxt = haxe.Json.parse(openfl.Assets.getText('$Path/Animation.json'));
-		}
+			jsontxt = openfl.Assets.getText('$Path/Animation.json');
 
 		return jsontxt;
 	}
