@@ -48,12 +48,11 @@ class FlxAnimateFrames extends FlxAtlasFrames
     {
         var frames:FlxAnimateFrames = new FlxAnimateFrames();
 
-        var imagePath:String = Path.replace('assets/images/', '');
+        var imagePath:String = Path.substr(Path.indexOf('images/') + 7);
         
         if(Assets.exists('$Path/spritemap.json'))
         {
             var curJson:AnimateAtlas = haxe.Json.parse(StringTools.replace(Assets.getText('$Path/spritemap.json'), String.fromCharCode(0xFEFF), ""));
-            //var graphic = FlxG.bitmap.add(curSpritemap);
             var graphic = Paths.image('$imagePath/${curJson.meta.image}');
             var spritemapFrames = FlxAtlasFrames.findFrame(graphic);
             if (spritemapFrames == null)
@@ -71,7 +70,6 @@ class FlxAnimateFrames extends FlxAtlasFrames
         while (Assets.exists('$Path/spritemap$i.json'))
         {
             var curJson:AnimateAtlas = haxe.Json.parse(StringTools.replace(Assets.getText('$Path/spritemap$i.json'), String.fromCharCode(0xFEFF), ""));
-            //var curSpritemap = Assets.getBitmapData('$Path/${curJson.meta.image}');
             var curSpritemap = Paths.image('$imagePath/${curJson.meta.image}');
             if (curSpritemap != null)
             {
